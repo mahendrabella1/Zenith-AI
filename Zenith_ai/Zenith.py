@@ -17,7 +17,7 @@ load_dotenv()
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PINECONE_INDEX_NAME = "college-data"  # Updated to reflect college data
+PINECONE_INDEX_NAME = "medical"  # Updated to reflect college data
 
 if not PINECONE_API_KEY or not GROQ_API_KEY:
     raise ValueError("❌ ERROR: Missing API keys. Check your .env file!")
@@ -110,7 +110,7 @@ def query_chatbot(question, use_model_only=False):
                 {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
                 {"role": "user", "content": question}
             ],
-            model="llama-3.3-70b-versatile",
+            model="llama-3.2-90b-vision-preview",
             stream=False,
         )
         return chat_completion.choices[0].message.content
