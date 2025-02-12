@@ -101,21 +101,54 @@ def store_embeddings(input_path, source_name):
 
     return "✅ Data successfully processed and stored."
 
-def query_chatbot(question, use_model_only=False):
-    """Retrieve relevant information from stored embeddings and generate a response."""
-    if use_model_only:
-        # Use LLaMA 3.3 model directly
+def query_chatbot(question, use_model_only=False, use_college_data=False):
+    """Retrieve relevant information based on user selection."""
+    
+    if use_college_data:
+        # Load the PDF only when College Data is selected
+        pdf_path = "collegedata.pdf"  # Ensure this file is in the correct directory
+        
+        try:
+            documents = load_pdf(pdf_path)
+        except Exception as e:
+            return f"❌ Error: Unable to load College Data PDF. {str(e)}"
+
+        text_data = "\n".join([doc.page_content for doc in documents])
+
+        # ✅ Perform basic keyword-based matching (or advanced similarity search)
+        relevant_text = []
+        for line in text_data.split("\n"):
+            if any(word.lower() in line.lower() for word in question.split()):
+                relevant_text.append(line)
+        
+        retrieved_text = "\n".join(relevant_text[:10])  # Limit results to avoid excessive text
+        
+        if not retrieved_text:
+            return "❌ No relevant information found in the College Data PDF."
+
+        # ✅ Use Groq to generate a response using the extracted text
         chat_completion = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
-                {"role": "user", "content": question}
+                {"role": "system", "content": "You are an AI that answers questions based on college data."},
+                {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
             ],
+            model="llama-3.3-70b-versatile",
+            stream=False,
+        )
+
+        return chat_completion.choices[0].message.content
+
+    # If using only the model (not college data)
+    if use_model_only:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "system", "content": "You are an advanced AI assistant."},
+                      {"role": "user", "content": question}],
             model="llama-3.3-70b-versatile",
             stream=False,
         )
         return chat_completion.choices[0].message.content
 
-    # Use Pinecone for document retrieval
+    # Otherwise, use Pinecone as default
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     
     try:
@@ -131,15 +164,14 @@ def query_chatbot(question, use_model_only=False):
     retrieved_text = "\n".join([doc.page_content for doc in relevant_docs])
 
     chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
-            {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
-        ],
+        messages=[{"role": "system", "content": "You are an advanced AI assistant."},
+                  {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}],
         model="llama-3.3-70b-versatile",
         stream=False,
     )
 
     return chat_completion.choices[0].message.content
+
 
 # ---------------------------- Streamlit UI ----------------------------
 
