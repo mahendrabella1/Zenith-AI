@@ -74,7 +74,7 @@ def store_embeddings(input_path, source_name):
     if input_path.startswith("http"):
         if not is_valid_url(input_path):
             return "❌ Error: URL is not accessible."
-        
+
         if input_path.endswith(".pdf"):
             documents = PyPDFLoader(input_path).load()
             text_data = "\n".join([doc.page_content for doc in documents])
@@ -117,14 +117,14 @@ def query_chatbot(question, use_model_only=False):
 
     # Use Pinecone for document retrieval
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    
+
     try:
         docsearch = PineconeVectorStore.from_existing_index(PINECONE_INDEX_NAME, embeddings)
     except Exception as e:
         return f"❌ Error: Could not connect to Pinecone index. {str(e)}"
 
     relevant_docs = docsearch.similarity_search(question, k=5)
-    
+
     if not relevant_docs:
         return "❌ No relevant information found."
 
@@ -146,7 +146,7 @@ def query_chatbot(question, use_model_only=False):
 def main():
     st.set_page_config(page_title="Zenith AI", page_icon="🧠")
     st.title("🧠 Zenith AI - The Ultimate Thinking Machine")
-    
+
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -156,13 +156,13 @@ def main():
             st.session_state.current_source_name = "collegedata.pdf"
 
         st.caption(f"Current Knowledge Source: {st.session_state.current_source_name}")
-        
+
         option = st.radio(
             "Select knowledge base:",
             ("Model", "College Data", "Upload PDF", "Enter URL"),
             index=0
         )
-        
+
         if option == "Upload PDF":
             pdf_file = st.file_uploader("Choose PDF file", type=["pdf"])
             if pdf_file:
