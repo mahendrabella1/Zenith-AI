@@ -64,40 +64,42 @@ def load_pdf(pdf_path):
     return PyPDFLoader(pdf_path).load()
 
 def store_embeddings(input_path, source_name):
-    """Process and store embeddings only if not already stored."""
+    """Process and store embeddings in Pinecone if not already stored."""
     if "processed_files" not in st.session_state:
         st.session_state.processed_files = set()
 
     if source_name in st.session_state.processed_files:
         return "✅ This document is already processed. You can now ask queries!"
 
-    if input_path.startswith("http"):
+    if input_path.startswith("http"):  # Webpage URL
         if not is_valid_url(input_path):
             return "❌ Error: URL is not accessible."
-        
-        if input_path.endswith(".pdf"):
-            documents = PyPDFLoader(input_path).load()
-            text_data = "\n".join([doc.page_content for doc in documents])
-        else:
-            text_data = extract_text_from_webpage(input_path)
-            if not text_data:
-                return "❌ Error: No readable text found."
-    else:
+
+        text_data = extract_text_from_webpage(input_path)
+        if not text_data:
+            return "❌ Error: No readable text found."
+    else:  # Local PDF file
         documents = load_pdf(input_path)
         text_data = "\n".join([doc.page_content for doc in documents])
 
-    # ✅ Split text into chunks for embeddings
-    text_chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20).split_text(text_data)
+    # ✅ Split text into chunks
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    text_chunks = text_splitter.split_text(text_data)
 
-    # ✅ Initialize embedding model
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    # ✅ Generate embeddings
+    embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vectors = [embeddings_model.embed_query(chunk) for chunk in text_chunks]
 
     # ✅ Store embeddings in Pinecone
-    PineconeVectorStore.from_texts(text_chunks, index_name=PINECONE_INDEX_NAME, embedding=embeddings)
+    index = pc.Index(PINECONE_INDEX_NAME)
+    ids = [f"{source_name}_{i}" for i in range(len(text_chunks))]
+    metadata = [{"text": chunk, "source": source_name} for chunk in text_chunks]
+
+    index.upsert(vectors=list(zip(ids, vectors, metadata)))
 
     # ✅ Mark file as processed
     st.session_state.processed_files.add(source_name)
-    st.session_state.current_source_name = source_name  # Store for UI display
+    st.session_state.current_source_name = source_name
 
     return "✅ Data successfully processed and stored."
 
