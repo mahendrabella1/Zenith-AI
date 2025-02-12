@@ -17,7 +17,7 @@ load_dotenv()
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PINECONE_INDEX_NAME = "college-data"  # Updated to reflect college data
+PINECONE_INDEX_NAME = "medical"  # Updated to reflect college data
 
 if not PINECONE_API_KEY or not GROQ_API_KEY:
     raise ValueError("❌ ERROR: Missing API keys. Check your .env file!")
@@ -74,7 +74,7 @@ def store_embeddings(input_path, source_name):
     if input_path.startswith("http"):
         if not is_valid_url(input_path):
             return "❌ Error: URL is not accessible."
-        
+
         if input_path.endswith(".pdf"):
             documents = PyPDFLoader(input_path).load()
             text_data = "\n".join([doc.page_content for doc in documents])
@@ -101,84 +101,52 @@ def store_embeddings(input_path, source_name):
 
     return "✅ Data successfully processed and stored."
 
-def query_chatbot(question, use_model_only=False, use_college_data=False):
-    """Retrieve relevant information based on user selection."""
-    
-    if use_college_data:
-        # Load the PDF only when College Data is selected
-        pdf_path = "collegedata.pdf"  # Ensure this file is in the correct directory
-        
-        try:
-            documents = load_pdf(pdf_path)
-        except Exception as e:
-            return f"❌ Error: Unable to load College Data PDF. {str(e)}"
-
-        text_data = "\n".join([doc.page_content for doc in documents])
-
-        # ✅ Perform basic keyword-based matching (or advanced similarity search)
-        relevant_text = []
-        for line in text_data.split("\n"):
-            if any(word.lower() in line.lower() for word in question.split()):
-                relevant_text.append(line)
-        
-        retrieved_text = "\n".join(relevant_text[:10])  # Limit results to avoid excessive text
-        
-        if not retrieved_text:
-            return "❌ No relevant information found in the College Data PDF."
-
-        # ✅ Use Groq to generate a response using the extracted text
+def query_chatbot(question, use_model_only=False):
+    """Retrieve relevant information from stored embeddings and generate a response."""
+    if use_model_only:
+        # Use LLaMA 3.3 model directly
         chat_completion = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are an AI that answers questions based on college data."},
-                {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
+                {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
+                {"role": "user", "content": question}
             ],
             model="llama-3.3-70b-versatile",
             stream=False,
         )
-
         return chat_completion.choices[0].message.content
 
-    # If using only the model (not college data)
-    if use_model_only:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "system", "content": "You are an advanced AI assistant."},
-                      {"role": "user", "content": question}],
-            model="llama-3.3-70b-versatile",
-            stream=False,
-        )
-        return chat_completion.choices[0].message.content
-
-    # Otherwise, use Pinecone as default
+    # Use Pinecone for document retrieval
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    
+
     try:
         docsearch = PineconeVectorStore.from_existing_index(PINECONE_INDEX_NAME, embeddings)
     except Exception as e:
         return f"❌ Error: Could not connect to Pinecone index. {str(e)}"
 
     relevant_docs = docsearch.similarity_search(question, k=5)
-    
+
     if not relevant_docs:
         return "❌ No relevant information found."
 
     retrieved_text = "\n".join([doc.page_content for doc in relevant_docs])
 
     chat_completion = client.chat.completions.create(
-        messages=[{"role": "system", "content": "You are an advanced AI assistant."},
-                  {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}],
+        messages=[
+            {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
+            {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
+        ],
         model="llama-3.3-70b-versatile",
         stream=False,
     )
 
     return chat_completion.choices[0].message.content
 
-
 # ---------------------------- Streamlit UI ----------------------------
 
 def main():
     st.set_page_config(page_title="Zenith AI", page_icon="🧠")
     st.title("🧠 Zenith AI - The Ultimate Thinking Machine")
-    
+
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -188,13 +156,13 @@ def main():
             st.session_state.current_source_name = "collegedata.pdf"
 
         st.caption(f"Current Knowledge Source: {st.session_state.current_source_name}")
-        
+
         option = st.radio(
             "Select knowledge base:",
             ("Model", "College Data", "Upload PDF", "Enter URL"),
             index=0
         )
-        
+
         if option == "Upload PDF":
             pdf_file = st.file_uploader("Choose PDF file", type=["pdf"])
             if pdf_file:
