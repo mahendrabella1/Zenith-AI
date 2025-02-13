@@ -69,6 +69,7 @@ def store_embeddings(input_path, source_name):
         st.session_state.processed_files = set()
 
     if source_name in st.session_state.processed_files:
+        print(f"✅ {source_name} already processed.")
         return "✅ This document is already processed. You can now ask queries!"
 
     if input_path.startswith("http"):
@@ -86,8 +87,15 @@ def store_embeddings(input_path, source_name):
         documents = load_pdf(input_path)
         text_data = "\n".join([doc.page_content for doc in documents])
 
+    print(f"Extracted Text: {text_data[:500]}...")  # ✅ Debugging Output
+
     # ✅ Split text into chunks for embeddings
     text_chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20).split_text(text_data)
+
+    if not text_chunks:
+        return "❌ Error: No text found in document."
+
+    print(f"Text Chunks Extracted: {len(text_chunks)}")  # ✅ Debugging Output
 
     # ✅ Initialize embedding model
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -100,6 +108,8 @@ def store_embeddings(input_path, source_name):
     st.session_state.current_source_name = source_name  # Store for UI display
 
     return "✅ Data successfully processed and stored."
+
+
 
 def query_chatbot(question, use_model_only=False):
     """Retrieve relevant information from stored embeddings and generate a response."""
@@ -123,7 +133,7 @@ def query_chatbot(question, use_model_only=False):
     except Exception as e:
         return f"❌ Error: Could not connect to Pinecone index. {str(e)}"
 
-    relevant_docs = docsearch.similarity_search(question, k=5)
+    relevant_docs = docsearch.similarity_search(question, k=10)
 
     if not relevant_docs:
         return "❌ No relevant information found."
