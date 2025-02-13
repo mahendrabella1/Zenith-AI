@@ -44,13 +44,18 @@ client = Groq(api_key=GROQ_API_KEY)
 
 # ---------------------------- Helper Functions ----------------------------
 
-def is_valid_url(url):
-    """Check if the URL is valid and accessible."""
-    try:
-        response = requests.get(url, timeout=10)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
+def fetch_pdf_from_github():
+    """Fetch the latest collegedata.pdf directly from GitHub."""
+    github_pdf_url = "https://raw.githubusercontent.com/mahendrabella1/Zenith-AI/main/Zenith_ai/collegedata.pdf"
+    response = requests.get(github_pdf_url)
+    
+    if response.status_code == 200:
+        temp_pdf_path = "collegedata.pdf"
+        with open(temp_pdf_path, "wb") as f:
+            f.write(response.content)
+        return temp_pdf_path
+    else:
+        return None
 
 def extract_text_from_webpage(url):
     """Extract text content from a webpage."""
@@ -64,17 +69,18 @@ def load_pdf(pdf_path):
     return PyPDFLoader(pdf_path).load()
 
 def store_embeddings(input_path, source_name):
-    """Process and store embeddings only if not already stored."""
+    """Process and store embeddings, forcing an update for college data."""
     if "processed_files" not in st.session_state:
         st.session_state.processed_files = set()
+
+    # ✅ Always refresh collegedata.pdf
+    if source_name == "collegedata.pdf":
+        st.session_state.processed_files.discard(source_name)  
 
     if source_name in st.session_state.processed_files:
         return "✅ This document is already processed. You can now ask queries!"
 
     if input_path.startswith("http"):
-        if not is_valid_url(input_path):
-            return "❌ Error: URL is not accessible."
-
         if input_path.endswith(".pdf"):
             documents = PyPDFLoader(input_path).load()
             text_data = "\n".join([doc.page_content for doc in documents])
@@ -97,14 +103,13 @@ def store_embeddings(input_path, source_name):
 
     # ✅ Mark file as processed
     st.session_state.processed_files.add(source_name)
-    st.session_state.current_source_name = source_name  # Store for UI display
+    st.session_state.current_source_name = source_name  
 
     return "✅ Data successfully processed and stored."
 
 def query_chatbot(question, use_model_only=False):
     """Retrieve relevant information from stored embeddings and generate a response."""
     if use_model_only:
-        # Use LLaMA 3.3 model directly
         chat_completion = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
@@ -115,7 +120,6 @@ def query_chatbot(question, use_model_only=False):
         )
         return chat_completion.choices[0].message.content
 
-    # Use Pinecone for document retrieval
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     try:
@@ -163,7 +167,16 @@ def main():
             index=0
         )
 
-        if option == "Upload PDF":
+        if option == "College Data":
+            with st.spinner("🔄 Fetching latest College Data..."):
+                pdf_path = fetch_pdf_from_github()
+                if pdf_path:
+                    result = store_embeddings(pdf_path, "collegedata.pdf")
+                    st.success(result)
+                else:
+                    st.error("❌ Failed to fetch College Data from GitHub.")
+
+        elif option == "Upload PDF":
             pdf_file = st.file_uploader("Choose PDF file", type=["pdf"])
             if pdf_file:
                 temp_path = f"temp_{pdf_file.name}"
@@ -192,26 +205,11 @@ def main():
             st.markdown(message["content"])
 
     if prompt := st.chat_input("Ask a question..."):
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": prompt,
-            "avatar": "👤"
-        })
-
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
-
+        st.session_state.chat_history.append({"role": "user", "content": prompt, "avatar": "👤"})
         with st.spinner("🔍 Analyzing..."):
             response = query_chatbot(prompt, use_model_only=(option == "Model"))
-
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "avatar": "🤖"
-            })
-
-            with st.chat_message("assistant", avatar="🤖"):
-                st.markdown(response)
+            st.session_state.chat_history.append({"role": "assistant", "content": response, "avatar": "🤖"})
+            st.chat_message("assistant", avatar="🤖").markdown(response)
 
 if __name__ == "__main__":
     main()
