@@ -120,7 +120,7 @@ def query_chatbot(question, use_model_only=False):
                 {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
                 {"role": "user", "content": question}
             ],
-            model="llama-3.3-70b-versatile"
+            model="llama-3.3-70b-versatile",
             stream=False,
         )
         return chat_completion.choices[0].message.content
