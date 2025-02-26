@@ -11,17 +11,16 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from groq import Groq
 from pinecone import Pinecone, ServerlessSpec
-from pinecone import Pinecone, ServerlessSpec
+
 # Load environment variables
 load_dotenv()
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PINECONE_INDEX_NAME = "college-data"  # Updated to reflect college data
+PINECONE_INDEX_NAME = "college-data"
 
 if not PINECONE_API_KEY or not GROQ_API_KEY:
     raise ValueError("❌ ERROR: Missing API keys. Check your .env file!")
-
 
 # Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
@@ -30,7 +29,7 @@ pc = Pinecone(api_key=PINECONE_API_KEY)
 if PINECONE_INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
         name=PINECONE_INDEX_NAME,
-        dimension=384,  # Dimension of the embeddings
+        dimension=384,
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
@@ -38,14 +37,13 @@ if PINECONE_INDEX_NAME not in pc.list_indexes().names():
 # Get the Pinecone index
 index = pc.Index(PINECONE_INDEX_NAME)
 
-
-# ✅ Ensure nltk dependency
+# Ensure nltk dependency
 try:
     nltk.data.find('corpora/averaged_perceptron_tagger')
 except LookupError:
     nltk.download('averaged_perceptron_tagger')
 
-# ✅ Initialize Groq client
+# Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
 
 # ---------------------------- Helper Functions ----------------------------
@@ -75,7 +73,6 @@ def store_embeddings(input_path, source_name):
         st.session_state.processed_files = set()
 
     if source_name in st.session_state.processed_files:
-        print(f"✅ {source_name} already processed.")
         return "✅ This document is already processed. You can now ask queries!"
 
     if input_path.startswith("http"):
@@ -93,15 +90,11 @@ def store_embeddings(input_path, source_name):
         documents = load_pdf(input_path)
         text_data = "\n".join([doc.page_content for doc in documents])
 
-    print(f"Extracted Text: {text_data[:500]}...")  # ✅ Debugging Output
-
-    # ✅ Split text into chunks for embeddings
+    # ✅ Split text into chunks
     text_chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20).split_text(text_data)
 
     if not text_chunks:
         return "❌ Error: No text found in document."
-
-    print(f"Text Chunks Extracted: {len(text_chunks)}")  # ✅ Debugging Output
 
     # ✅ Initialize embedding model
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -111,19 +104,16 @@ def store_embeddings(input_path, source_name):
 
     # ✅ Mark file as processed
     st.session_state.processed_files.add(source_name)
-    st.session_state.current_source_name = source_name  # Store for UI display
+    st.session_state.current_source_name = source_name
 
     return "✅ Data successfully processed and stored."
-
-
 
 def query_chatbot(question, use_model_only=False):
     """Retrieve relevant information from stored embeddings and generate a response."""
     if use_model_only:
-        # Use LLaMA 3.3 model directly
         chat_completion = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
+                {"role": "system", "content": "You are an advanced AI assistant."},
                 {"role": "user", "content": question}
             ],
             model="llama-3.3-70b-versatile",
@@ -131,7 +121,6 @@ def query_chatbot(question, use_model_only=False):
         )
         return chat_completion.choices[0].message.content
 
-    # Use Pinecone for document retrieval
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     try:
@@ -148,7 +137,7 @@ def query_chatbot(question, use_model_only=False):
 
     chat_completion = client.chat.completions.create(
         messages=[
-            {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
+            {"role": "system", "content": "You are an advanced AI assistant."},
             {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
         ],
         model="llama-3.3-70b-versatile",
@@ -163,7 +152,6 @@ def main():
     st.set_page_config(page_title="Zenith AI", page_icon="🧠")
     st.title("🧠 Zenith AI - The Ultimate Thinking Machine")
 
-    # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
         st.divider()
@@ -197,7 +185,6 @@ def main():
                     result = store_embeddings(url, url)
                     st.success(result)
 
-    # Main chat interface
     st.subheader("Chat with ZenithAI")
 
     if "chat_history" not in st.session_state:
@@ -208,11 +195,7 @@ def main():
             st.markdown(message["content"])
 
     if prompt := st.chat_input("Ask a question..."):
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": prompt,
-            "avatar": "👤"
-        })
+        st.session_state.chat_history.append({"role": "user", "content": prompt, "avatar": "👤"})
 
         with st.chat_message("user", avatar="👤"):
             st.markdown(prompt)
@@ -220,11 +203,7 @@ def main():
         with st.spinner("🔍 Analyzing..."):
             response = query_chatbot(prompt, use_model_only=(option == "Model"))
 
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "avatar": "🤖"
-            })
+            st.session_state.chat_history.append({"role": "assistant", "content": response, "avatar": "🤖"})
 
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(response)
