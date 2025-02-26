@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings  # Updated import
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from groq import Groq
 from pinecone import Pinecone, ServerlessSpec
 
@@ -16,12 +17,12 @@ load_dotenv()
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PINECONE_INDEX_NAME = "college-data"
+PINECONE_INDEX_NAME = "college-data"  # Updated to reflect college data
 
 if not PINECONE_API_KEY or not GROQ_API_KEY:
     raise ValueError("❌ ERROR: Missing API keys. Check your .env file!")
 
-# Initialize Pinecone client
+# ✅ Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 if PINECONE_INDEX_NAME not in pc.list_indexes().names():
@@ -32,16 +33,13 @@ if PINECONE_INDEX_NAME not in pc.list_indexes().names():
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
 
-# Get the Pinecone index
-index = pc.Index(PINECONE_INDEX_NAME)
-
-# Ensure nltk dependency
+# ✅ Ensure nltk dependency
 try:
     nltk.data.find('corpora/averaged_perceptron_tagger')
 except LookupError:
     nltk.download('averaged_perceptron_tagger')
 
-# Initialize Groq client
+# ✅ Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
 
 # ---------------------------- Helper Functions ----------------------------
@@ -89,36 +87,29 @@ def store_embeddings(input_path, source_name):
         documents = load_pdf(input_path)
         text_data = "\n".join([doc.page_content for doc in documents])
 
-    print(f"Extracted Text: {text_data[:500]}...")  # Debugging Output
+    print(f"Extracted Text: {text_data[:500]}...")  # ✅ Debugging Output
 
-    # Split text into chunks for embeddings
+    # ✅ Split text into chunks for embeddings
     text_chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20).split_text(text_data)
 
     if not text_chunks:
         return "❌ Error: No text found in document."
 
-    print(f"Text Chunks Extracted: {len(text_chunks)}")  # Debugging Output
+    print(f"Text Chunks Extracted: {len(text_chunks)}")  # ✅ Debugging Output
 
-    # Initialize embedding model
+    # ✅ Initialize embedding model
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-    # Store embeddings in Pinecone
-    index.upsert(
-        vectors=[
-            {
-                "id": f"doc-{i}",
-                "values": embeddings.embed_documents([chunk])[0],
-                "metadata": {"text": chunk, "source": source_name}  # Add "text" key
-            }
-            for i, chunk in enumerate(text_chunks)
-        ]
-    )
+    # ✅ Store embeddings in Pinecone
+    PineconeVectorStore.from_texts(text_chunks, index_name=PINECONE_INDEX_NAME, embedding=embeddings)
 
-    # Mark file as processed
+    # ✅ Mark file as processed
     st.session_state.processed_files.add(source_name)
     st.session_state.current_source_name = source_name  # Store for UI display
 
     return "✅ Data successfully processed and stored."
+
+
 
 def query_chatbot(question, use_model_only=False):
     """Retrieve relevant information from stored embeddings and generate a response."""
@@ -129,7 +120,7 @@ def query_chatbot(question, use_model_only=False):
                 {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
                 {"role": "user", "content": question}
             ],
-            model="llama-3.3-70b-specdec",
+            model="llama-3.3-70b-versatile",
             stream=False,
         )
         return chat_completion.choices[0].message.content
@@ -138,27 +129,23 @@ def query_chatbot(question, use_model_only=False):
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     try:
-        query_embedding = embeddings.embed_documents([question])[0]
-        query_response = index.query(
-            vector=query_embedding,
-            top_k=10,
-            include_metadata=True
-        )
+        docsearch = PineconeVectorStore.from_existing_index(PINECONE_INDEX_NAME, embeddings)
     except Exception as e:
         return f"❌ Error: Could not connect to Pinecone index. {str(e)}"
 
-    relevant_docs = query_response["matches"]
+    relevant_docs = docsearch.similarity_search(question, k=10)
+
     if not relevant_docs:
         return "❌ No relevant information found."
 
-    retrieved_text = "\n".join([doc["metadata"]["text"] for doc in relevant_docs])  # Access "text" key
+    retrieved_text = "\n".join([doc.page_content for doc in relevant_docs])
 
     chat_completion = client.chat.completions.create(
         messages=[
             {"role": "system", "content": "You are an advanced AI assistant, ready to answer any query."},
             {"role": "user", "content": f"Relevant Information:\n\n{retrieved_text}\n\nUser's question: {question}"}
         ],
-        model="llama-3.3-70b-specdec",
+        model="llama-3.3-70b-versatile",
         stream=False,
     )
 
