@@ -3,6 +3,7 @@ nltk
 python-dotenv
 pinecone
 langchain
+langchain-huggingface
 langchain-community
 beautifulsoup4
 torch
