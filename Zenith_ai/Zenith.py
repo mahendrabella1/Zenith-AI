@@ -11,7 +11,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from groq import Groq
 from pinecone import Pinecone, ServerlessSpec
-
+from pinecone import Pinecone, ServerlessSpec
 # Load environment variables
 load_dotenv()
 
@@ -22,16 +22,22 @@ PINECONE_INDEX_NAME = "college-data"  # Updated to reflect college data
 if not PINECONE_API_KEY or not GROQ_API_KEY:
     raise ValueError("❌ ERROR: Missing API keys. Check your .env file!")
 
-# ✅ Initialize Pinecone client
+
+# Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
+# Check if the index exists, and create it if it doesn't
 if PINECONE_INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
         name=PINECONE_INDEX_NAME,
-        dimension=384,
+        dimension=384,  # Dimension of the embeddings
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
+
+# Get the Pinecone index
+index = pc.Index(PINECONE_INDEX_NAME)
+
 
 # ✅ Ensure nltk dependency
 try:
