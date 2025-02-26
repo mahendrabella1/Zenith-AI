@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from groq import Groq
 from pinecone import Pinecone, ServerlessSpec
 
@@ -32,6 +31,9 @@ if PINECONE_INDEX_NAME not in pc.list_indexes().names():
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
+
+# ✅ Get the Pinecone index
+index = pc.Index(PINECONE_INDEX_NAME)
 
 # ✅ Ensure nltk dependency
 try:
@@ -101,15 +103,22 @@ def store_embeddings(input_path, source_name):
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     # ✅ Store embeddings in Pinecone
-    PineconeVectorStore.from_texts(text_chunks, index_name=PINECONE_INDEX_NAME, embedding=embeddings)
+    index.upsert(
+        vectors=[
+            {
+                "id": f"doc-{i}",
+                "values": embeddings.embed_documents([chunk])[0],
+                "metadata": {"source": source_name}
+            }
+            for i, chunk in enumerate(text_chunks)
+        ]
+    )
 
     # ✅ Mark file as processed
     st.session_state.processed_files.add(source_name)
     st.session_state.current_source_name = source_name  # Store for UI display
 
     return "✅ Data successfully processed and stored."
-
-
 
 def query_chatbot(question, use_model_only=False):
     """Retrieve relevant information from stored embeddings and generate a response."""
@@ -129,16 +138,20 @@ def query_chatbot(question, use_model_only=False):
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     try:
-        docsearch = PineconeVectorStore.from_existing_index(PINECONE_INDEX_NAME, embeddings)
+        query_embedding = embeddings.embed_documents([question])[0]
+        query_response = index.query(
+            vector=query_embedding,
+            top_k=10,
+            include_metadata=True
+        )
     except Exception as e:
         return f"❌ Error: Could not connect to Pinecone index. {str(e)}"
 
-    relevant_docs = docsearch.similarity_search(question, k=10)
-
+    relevant_docs = query_response["matches"]
     if not relevant_docs:
         return "❌ No relevant information found."
 
-    retrieved_text = "\n".join([doc.page_content for doc in relevant_docs])
+    retrieved_text = "\n".join([doc["metadata"]["text"] for doc in relevant_docs])
 
     chat_completion = client.chat.completions.create(
         messages=[
