@@ -4,8 +4,13 @@ beautifulsoup4
 python-dotenv
 pinecone
 nltk
-langchain
 langchain-community
 groq
 sentence-transformers
 pypdf
+langchain
+langchain-huggingface
+torch
+torchvision
+torchaudio
+
