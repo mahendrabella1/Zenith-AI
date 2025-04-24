@@ -10,7 +10,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from groq import Groq
 from langchain_huggingface import HuggingFaceEmbeddings
-from pinecone import Pinecone, ServerlessSpec
 import asyncio
 
 try:
@@ -42,7 +41,7 @@ if PINECONE_INDEX_NAME not in pc.list_indexes().names():
     )
 
 # Get the Pinecone index
-index = pc.Index(PINECONE_INDEX_NAME)
+
 
 # Ensure nltk dependency
 try:
